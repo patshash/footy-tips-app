@@ -53,12 +53,19 @@ model Fixture {
   homeTeamId String
   awayTeamId String
   venue      String?
+  venueCity  String?
   kickoff    DateTime?
   homeScore  Int?
   awayScore  Int?
   result     String?   // "home", "away", "draw", null (not played)
   referee    String?
+  crowd      Int?
+  halftimeHome Int?
+  halftimeAway Int?
+  homeOdds   Float?
+  awayOdds   Float?
   status     String    @default("upcoming") // upcoming, live, completed
+  matchCentreUrl String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -107,10 +114,18 @@ model LadderEntry {
   wins           Int    @default(0)
   draws          Int    @default(0)
   losses         Int    @default(0)
+  byes           Int    @default(0)
   pointsFor      Int    @default(0)
   pointsAgainst  Int    @default(0)
   pointsDiff     Int    @default(0)
   competitionPoints Int @default(0)
+  homeRecord     String?  // "W-L" format from NRL.com
+  awayRecord     String?
+  streak         String?  // "3W", "2L" etc
+  form           String?  // "W-L" record
+  avgWinMargin   Float?
+  avgLoseMargin  Float?
+  titleOdds      String?  // premiership odds
   createdAt      DateTime @default(now())
 
   team Team @relation(fields: [teamId], references: [id])

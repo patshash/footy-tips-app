@@ -36,33 +36,34 @@ const round1Fixtures = [
 async function main() {
   console.log('Seeding database...');
 
-  // Create season
-  const season = await prisma.season.upsert({
-    where: { id: '2026' },
-    update: {},
-    create: {
-      id: '2026',
-      year: 2026,
-      current: true,
-    },
-  });
-  console.log(`Created season: ${season.year}`);
-
-  // Create rounds 1-27
-  for (let i = 1; i <= 27; i++) {
-    await prisma.round.upsert({
-      where: { id: `2026-R${i}` },
+  // Create seasons 2024-2026
+  for (const yr of [2024, 2025, 2026]) {
+    await prisma.season.upsert({
+      where: { id: String(yr) },
       update: {},
       create: {
-        id: `2026-R${i}`,
-        seasonId: '2026',
-        number: i,
-        name: `Round ${i}`,
-        isCurrent: i === 1,
+        id: String(yr),
+        year: yr,
+        current: yr === 2026,
       },
     });
+
+    // Create rounds 1-27 per season
+    for (let i = 1; i <= 27; i++) {
+      await prisma.round.upsert({
+        where: { id: `${yr}-R${i}` },
+        update: {},
+        create: {
+          id: `${yr}-R${i}`,
+          seasonId: String(yr),
+          number: i,
+          name: `Round ${i}`,
+          isCurrent: yr === 2026 && i === 1,
+        },
+      });
+    }
   }
-  console.log('Created 27 rounds');
+  console.log('Created seasons 2024-2026 with 27 rounds each');
 
   // Create teams
   for (const team of teams) {
@@ -120,24 +121,62 @@ async function main() {
   }
   console.log('Created pre-season ladder entries');
 
-  // Register NRL scraper plugin (disabled by default)
+  // Register NRL scraper plugin (enabled by default)
   await prisma.pluginConfig.upsert({
     where: { id: 'nrl-scraper' },
-    update: {},
+    update: {
+      config: JSON.stringify({
+        sources: {
+          nrlApi: {
+            baseUrl: 'https://www.nrl.com',
+            endpoints: {
+              draw: '/draw/data',
+              ladder: '/ladder/data',
+              stats: '/stats/data',
+            },
+            competitionId: 111,
+          },
+          rlp: {
+            baseUrl: 'https://rugbyleagueproject.org',
+            endpoints: {
+              season: '/seasons/nrl-{year}/summary.html',
+              round: '/seasons/nrl-{year}/round-{round}/summary.html',
+              match: '/matches/{id}',
+            },
+          },
+        },
+        historicalYears: [2024, 2025, 2026],
+      }),
+      enabled: true,
+    },
     create: {
       id: 'nrl-scraper',
       name: 'NRL Data Scraper',
       type: 'data-source',
-      enabled: false,
+      enabled: true,
       config: JSON.stringify({
-        baseUrl: 'https://www.nrl.com',
-        endpoints: {
-          fixtures: '/draw',
-          ladder: '/ladder',
-          stats: '/stats',
+        sources: {
+          nrlApi: {
+            baseUrl: 'https://www.nrl.com',
+            endpoints: {
+              draw: '/draw/data',
+              ladder: '/ladder/data',
+              stats: '/stats/data',
+            },
+            competitionId: 111,
+          },
+          rlp: {
+            baseUrl: 'https://rugbyleagueproject.org',
+            endpoints: {
+              season: '/seasons/nrl-{year}/summary.html',
+              round: '/seasons/nrl-{year}/round-{round}/summary.html',
+              match: '/matches/{id}',
+            },
+          },
         },
+        historicalYears: [2024, 2025, 2026],
       }),
-      schedule: '0 */6 * * *', // Every 6 hours
+      schedule: '0 */6 * * *',
     },
   });
   console.log('Registered NRL scraper plugin');

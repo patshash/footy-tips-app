@@ -13,13 +13,15 @@ ladderRoutes.get('/', async (req, res) => {
     if (round) where.round = parseInt(round as string, 10);
 
     // If no round specified, get the latest round available
-    if (!round && season) {
+    if (!round) {
+      const seasonFilter = season ? { season: season as string } : {};
       const latestEntry = await prisma.ladderEntry.findFirst({
-        where: { season: season as string },
+        where: seasonFilter,
         orderBy: { round: 'desc' },
       });
       if (latestEntry) {
         where.round = latestEntry.round;
+        if (!season) where.season = latestEntry.season;
       }
     }
 

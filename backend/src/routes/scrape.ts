@@ -1,15 +1,73 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { scrapeLadder, scrapeFixtures, scrapeAll } from '../services/scraper.js';
+import { scrapeLadder, scrapeFixtures, scrapeAll, scrapeHistorical } from '../services/scraper.js';
 
 export const scrapeRoutes = Router();
 
+// Track active historical imports
+let historicalImportRunning = false;
+let historicalProgress: string[] = [];
+
 // POST /api/scrape — trigger a scrape on command
-// Body: { "targets": ["ladder", "fixtures", "all"], "season": "2026", "round": 1 }
+// Body: { "targets": ["ladder", "fixtures", "all", "historical"], "season": "2026", "round": 1 }
 scrapeRoutes.post('/', async (req, res) => {
   try {
     const { targets = ['all'], season = '2026', round } = req.body;
     const targetList: string[] = Array.isArray(targets) ? targets : [targets];
+
+    // Historical import is long-running — handle it async
+    if (targetList.includes('historical')) {
+      if (historicalImportRunning) {
+        res.json({
+          status: 'already_running',
+          message: 'Historical import is already in progress',
+          progress: historicalProgress,
+        });
+        return;
+      }
+
+      historicalImportRunning = true;
+      historicalProgress = ['Starting historical import...'];
+
+      // Run in background, respond immediately
+      scrapeHistorical(prisma, 2024, 2026, (msg) => {
+        historicalProgress.push(msg);
+        console.log(`[historical] ${msg}`);
+      })
+        .then(async (results) => {
+          // Log results
+          for (const r of results) {
+            if (r.recordsAffected > 0 || r.errors.length > 0) {
+              await prisma.dataSourceLog.create({
+                data: {
+                  source: `${r.source}/${r.type}`,
+                  status: r.errors.length === 0 ? 'success' : (r.recordsAffected > 0 ? 'partial' : 'error'),
+                  message: r.errors.length > 0 ? r.errors.slice(0, 5).join('; ') : r.details,
+                  recordsAffected: r.recordsAffected,
+                },
+              });
+            }
+          }
+
+          const totalRecords = results.reduce((sum, r) => sum + r.recordsAffected, 0);
+          historicalProgress.push(`Complete! ${totalRecords} total records imported.`);
+          console.log(`[historical] Complete — ${totalRecords} records`);
+        })
+        .catch((err) => {
+          historicalProgress.push(`Error: ${err instanceof Error ? err.message : String(err)}`);
+          console.error('[historical] Error:', err);
+        })
+        .finally(() => {
+          historicalImportRunning = false;
+        });
+
+      res.json({
+        status: 'started',
+        message: 'Historical import started (2024-2026). Check /api/scrape/status for progress.',
+      });
+      return;
+    }
+
     const results = [];
 
     for (const target of targetList) {
@@ -97,6 +155,10 @@ scrapeRoutes.get('/status', async (_req, res) => {
       lastRun: plugin?.lastRun ?? null,
       lastResult: lastLog,
       recentHistory: recentLogs,
+      historicalImport: {
+        running: historicalImportRunning,
+        progress: historicalProgress,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch status' });

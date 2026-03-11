@@ -23,7 +23,7 @@ export default function Settings() {
   const { data: scrapeStatus } = useQuery({
     queryKey: ['scrapeStatus'],
     queryFn: () => api.getScrapeStatus(),
-    refetchInterval: 10000,
+    refetchInterval: (query) => query.state.data?.historicalImport?.running ? 3000 : 10000,
   });
 
   const { data: scrapeLogs = [] } = useQuery({
@@ -51,6 +51,7 @@ export default function Settings() {
     { value: 'all', label: 'All Sources' },
     { value: 'ladder', label: 'Ladder Only' },
     { value: 'fixtures', label: 'Fixtures Only' },
+    { value: 'historical', label: 'Historical (2024-2026)' },
   ];
 
   return (
@@ -136,6 +137,21 @@ export default function Settings() {
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <Clock size={12} />
               <span>Last run: {new Date(scrapeStatus.lastRun).toLocaleString()}</span>
+            </div>
+          )}
+
+          {/* Historical import progress */}
+          {scrapeStatus?.historicalImport?.running && (
+            <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-300">
+              <div className="flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" />
+                <p className="font-medium">Historical import in progress...</p>
+              </div>
+              <div className="mt-2 max-h-32 overflow-y-auto text-xs opacity-80">
+                {scrapeStatus.historicalImport.progress?.map((msg: string, i: number) => (
+                  <p key={i}>{msg}</p>
+                ))}
+              </div>
             </div>
           )}
         </div>
