@@ -133,6 +133,50 @@ function PredictionCard({ prediction }: { prediction: any }) {
             </div>
           </div>
 
+          {/* Injury summary */}
+          {(prediction.homeTeam.injuries?.length > 0 || prediction.awayTeam.injuries?.length > 0) && (
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-zinc-800 p-2">
+                <p className="text-zinc-500 mb-1">{prediction.homeTeam.name} Injuries</p>
+                {prediction.homeTeam.injuries?.length > 0 ? (
+                  prediction.homeTeam.injuries.map((inj: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between py-0.5">
+                      <span className="text-zinc-300">{inj.playerName}</span>
+                      <span className={cn(
+                        'text-[10px] uppercase font-medium',
+                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
+                      )}>
+                        {inj.status === 'probable' ? '✓ returning' : inj.status}
+                        {inj.position ? ` · ${inj.position}` : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-zinc-600">No injuries</p>
+                )}
+              </div>
+              <div className="rounded-lg bg-zinc-800 p-2">
+                <p className="text-zinc-500 mb-1">{prediction.awayTeam.name} Injuries</p>
+                {prediction.awayTeam.injuries?.length > 0 ? (
+                  prediction.awayTeam.injuries.map((inj: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between py-0.5">
+                      <span className="text-zinc-300">{inj.playerName}</span>
+                      <span className={cn(
+                        'text-[10px] uppercase font-medium',
+                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
+                      )}>
+                        {inj.status === 'probable' ? '✓ returning' : inj.status}
+                        {inj.position ? ` · ${inj.position}` : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-zinc-600">No injuries</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Factors */}
           <div className="space-y-3">
             <p className="text-xs font-medium text-zinc-400">Contributing Factors</p>
