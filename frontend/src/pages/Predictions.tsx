@@ -135,7 +135,7 @@ function PredictionCard({ prediction }: { prediction: any }) {
 
           {/* Playing statistics comparison */}
           {(prediction.homeTeam.completionRate != null || prediction.homeTeam.tackleEfficiency != null || prediction.homeTeam.possessionAvg != null) && (
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="grid grid-cols-5 gap-2 text-center text-xs">
               {prediction.homeTeam.completionRate != null && (
                 <div className="rounded-lg bg-zinc-800 p-2">
                   <p className="text-zinc-500">Completion</p>
@@ -155,6 +155,13 @@ function PredictionCard({ prediction }: { prediction: any }) {
                   <p className="text-zinc-500">Errors</p>
                   <p className="font-mono text-zinc-300">{prediction.homeTeam.errorCount}</p>
                   <p className="font-mono text-zinc-300">{prediction.awayTeam.errorCount ?? '-'}</p>
+                </div>
+              )}
+              {prediction.homeTeam.penaltyCount != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Penalties</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.penaltyCount}</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.penaltyCount ?? '-'}</p>
                 </div>
               )}
               {prediction.homeTeam.possessionAvg != null && (

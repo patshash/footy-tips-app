@@ -27,23 +27,23 @@ const NICKNAME_MAP: Record<string, string> = {
 
 // Map NRL.com teamId numbers → our 3-letter IDs
 const TEAM_ID_MAP: Record<number, string> = {
-  500011: 'BRI', // Broncos
-  500013: 'CAN', // Raiders
-  500010: 'CBY', // Bulldogs
-  500015: 'CRO', // Sharks
-  500028: 'DOL', // Dolphins
-  500004: 'GLD', // Titans
+  500001: 'SYD', // Roosters
   500002: 'MAN', // Sea Eagles
-  500021: 'MEL', // Storm
   500003: 'NEW', // Knights
-  500032: 'NZW', // Warriors
-  500012: 'NQL', // Cowboys
-  500031: 'PAR', // Eels
-  500014: 'PEN', // Panthers
+  500004: 'GLD', // Titans
   500005: 'SOU', // Rabbitohs
+  500010: 'CBY', // Bulldogs
+  500011: 'BRI', // Broncos
+  500012: 'NQL', // Cowboys
+  500013: 'CAN', // Raiders
+  500014: 'PEN', // Panthers
+  500021: 'MEL', // Storm
   500022: 'SGI', // Dragons
-  500016: 'SYD', // Roosters
   500023: 'WST', // Wests Tigers
+  500028: 'CRO', // Sharks
+  500031: 'PAR', // Eels
+  500032: 'NZW', // Warriors
+  500723: 'DOL', // Dolphins
 };
 
 function resolveTeamId(nickname: string): string | null {
@@ -412,13 +412,12 @@ export async function fetchTeamStats(
       }
     }
 
-    // Determine current round
-    const latestLadder = await prisma.ladderEntry.findFirst({
+    // Use the same round that computeTeamStats used (latest round with completed fixtures)
+    const existingStat = await prisma.teamStat.findFirst({
       where: { season: String(season) },
-      orderBy: { round: 'desc' },
+      orderBy: { roundId: 'desc' },
     });
-    const currentRound = latestLadder?.round ?? 1;
-    const roundId = `${season}-R${currentRound}`;
+    const roundId = existingStat?.roundId ?? `${season}-R1`;
 
     // Update existing records with API-sourced stats
     for (const [teamId, stats] of Object.entries(teamData)) {

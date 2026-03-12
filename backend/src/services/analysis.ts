@@ -437,9 +437,9 @@ export async function predictMatch(
   }
 
   // Factor 9: Playing Statistics (weight: 10 max)
-  // Uses completion rate, tackle efficiency, errors, possession when available
-  const hasHomeStats = home.completionRate != null || home.tackleEfficiency != null || home.errorCount != null || home.possessionAvg != null;
-  const hasAwayStats = away.completionRate != null || away.tackleEfficiency != null || away.errorCount != null || away.possessionAvg != null;
+  // Uses completion rate, tackle efficiency, errors, penalties, possession when available
+  const hasHomeStats = home.completionRate != null || home.tackleEfficiency != null || home.errorCount != null || home.penaltyCount != null || home.possessionAvg != null;
+  const hasAwayStats = away.completionRate != null || away.tackleEfficiency != null || away.errorCount != null || away.penaltyCount != null || away.possessionAvg != null;
 
   if (hasHomeStats && hasAwayStats) {
     let statsAdvantage = 0;
@@ -464,6 +464,13 @@ export async function predictMatch(
       const errorDiff = away.errorCount - home.errorCount; // opponent errors help you
       statsAdvantage += errorDiff * 0.15;
       statDetails.push(`Errors: ${home.name} ${home.errorCount} vs ${away.name} ${away.errorCount}`);
+    }
+
+    // Penalties conceded (lower is better — inverted)
+    if (home.penaltyCount != null && away.penaltyCount != null) {
+      const penDiff = away.penaltyCount - home.penaltyCount; // opponent penalties help you
+      statsAdvantage += penDiff * 0.15;
+      statDetails.push(`Penalties: ${home.name} ${home.penaltyCount} vs ${away.name} ${away.penaltyCount}`);
     }
 
     // Possession (higher is better)
