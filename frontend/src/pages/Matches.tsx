@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, MapPin, ChevronDown } from 'lucide-react';
@@ -11,22 +11,44 @@ import ConfidenceBadge from '../components/ConfidenceBadge';
 
 export default function Matches() {
   const navigate = useNavigate();
-  const [round, setRound] = useState('');
+  const currentYear = new Date().getFullYear().toString();
+  // '' = current round (default), 'all' = all rounds, '1','2',... = specific round
+  const [selectedRound, setSelectedRound] = useState('');
 
-  const { data: fixtures = [], isLoading } = useQuery({
-    queryKey: ['fixtures', round],
-    queryFn: () => api.getFixtures(round ? { round } : undefined),
+  const { data: allFixtures = [], isLoading } = useQuery({
+    queryKey: ['fixtures', currentYear],
+    queryFn: () => api.getFixtures({ season: currentYear }),
   });
 
   const { data: picks = [] } = useQuery({
-    queryKey: ['picks', round],
-    queryFn: () => api.getPicks(round ? { round } : undefined),
+    queryKey: ['picks'],
+    queryFn: () => api.getPicks(),
   });
 
   const picksMap = new Map(picks.map((p: any) => [p.fixtureId, p]));
-  const rounds = [...new Set(fixtures.map((f: any) => f.roundNumber))].sort(
-    (a: number, b: number) => a - b
+
+  const rounds = useMemo(() =>
+    [...new Set(allFixtures.map((f: any) => f.round?.number as number))]
+      .filter((n) => n != null)
+      .sort((a, b) => a - b),
+    [allFixtures]
   );
+
+  const currentRound = useMemo(() => {
+    const current = allFixtures.find((f: any) => f.round?.isCurrent);
+    return current?.round?.number as number | undefined;
+  }, [allFixtures]);
+
+  const activeRound = selectedRound === 'all'
+    ? null
+    : selectedRound
+      ? parseInt(selectedRound, 10)
+      : currentRound ?? null;
+
+  const fixtures = useMemo(() => {
+    if (activeRound == null) return allFixtures;
+    return allFixtures.filter((f: any) => f.round?.number === activeRound);
+  }, [allFixtures, activeRound]);
 
   return (
     <div className="space-y-6">
@@ -34,11 +56,12 @@ export default function Matches() {
         <h1 className="text-2xl font-bold">Matches</h1>
         <div className="relative">
           <select
-            value={round}
-            onChange={(e) => setRound(e.target.value)}
+            value={selectedRound}
+            onChange={(e) => setSelectedRound(e.target.value)}
             className="appearance-none rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-4 pr-10 text-sm text-white transition-colors hover:border-zinc-600 focus:border-emerald-500 focus:outline-none"
           >
-            <option value="">All Rounds</option>
+            <option value="">Current Round{currentRound ? ` (R${currentRound})` : ''}</option>
+            <option value="all">All Rounds</option>
             {rounds.map((r: any) => (
               <option key={r} value={r}>
                 Round {r}
@@ -117,8 +140,8 @@ export default function Matches() {
                 </span>
                 <span className="flex items-center gap-1">
                   <CalendarDays size={12} />
-                  {fixture.startTime
-                    ? format(new Date(fixture.startTime), 'EEE d MMM, h:mm a')
+                  {fixture.kickoff
+                    ? format(new Date(fixture.kickoff), 'EEE d MMM, h:mm a')
                     : 'TBA'}
                 </span>
                 {pick && (
