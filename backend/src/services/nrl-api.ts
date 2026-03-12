@@ -124,6 +124,9 @@ export async function fetchDraw(
       });
     }
 
+    // Track fixture IDs we created/updated from the API
+    const validFixtureIds: string[] = [];
+
     for (const match of data.fixtures) {
       if (match.type !== 'Match') continue;
 
@@ -179,8 +182,9 @@ export async function fetchDraw(
             matchCentreUrl: match.matchCentreUrl ?? existing.matchCentreUrl,
           },
         });
+        validFixtureIds.push(existing.id);
       } else {
-        await prisma.fixture.create({
+        const created = await prisma.fixture.create({
           data: {
             roundId,
             homeTeamId: homeId,
@@ -197,9 +201,23 @@ export async function fetchDraw(
             matchCentreUrl: match.matchCentreUrl,
           },
         });
+        validFixtureIds.push(created.id);
       }
 
       result.recordsAffected++;
+    }
+
+    // Remove stale fixtures that no longer appear in the API draw
+    if (validFixtureIds.length > 0) {
+      const stale = await prisma.fixture.deleteMany({
+        where: {
+          roundId,
+          id: { notIn: validFixtureIds },
+        },
+      });
+      if (stale.count > 0) {
+        console.log(`[fetchDraw] Removed ${stale.count} stale fixture(s) from ${roundId}`);
+      }
     }
 
     result.details = `${result.recordsAffected} fixtures for ${season} Round ${round}`;
