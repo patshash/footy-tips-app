@@ -4,11 +4,12 @@ import { api } from '../services/api';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import { cn } from '../lib/utils';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function Settings() {
   const queryClient = useQueryClient();
   const [scrapeTargets, setScrapeTargets] = useState<string[]>(['all']);
+  const wasImporting = useRef(false);
 
   const { data: plugins = [], isLoading } = useQuery({
     queryKey: ['plugins'],
@@ -25,6 +26,18 @@ export default function Settings() {
     queryFn: () => api.getScrapeStatus(),
     refetchInterval: (query) => query.state.data?.historicalImport?.running ? 3000 : 10000,
   });
+
+  // When historical import finishes, refresh predictions and team stats
+  useEffect(() => {
+    const isRunning = scrapeStatus?.historicalImport?.running ?? false;
+    if (wasImporting.current && !isRunning) {
+      queryClient.invalidateQueries({ queryKey: ['predictions'] });
+      queryClient.invalidateQueries({ queryKey: ['ladder'] });
+      queryClient.invalidateQueries({ queryKey: ['fixtures'] });
+      queryClient.invalidateQueries({ queryKey: ['scrapeLogs'] });
+    }
+    wasImporting.current = isRunning;
+  }, [scrapeStatus?.historicalImport?.running, queryClient]);
 
   const { data: scrapeLogs = [] } = useQuery({
     queryKey: ['scrapeLogs'],
@@ -44,6 +57,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['scrapeLogs'] });
       queryClient.invalidateQueries({ queryKey: ['ladder'] });
       queryClient.invalidateQueries({ queryKey: ['fixtures'] });
+      queryClient.invalidateQueries({ queryKey: ['predictions'] });
     },
   });
 
