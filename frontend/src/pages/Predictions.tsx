@@ -133,6 +133,91 @@ function PredictionCard({ prediction }: { prediction: any }) {
             </div>
           </div>
 
+          {/* Playing statistics comparison */}
+          {(prediction.homeTeam.completionRate != null || prediction.homeTeam.tackleEfficiency != null || prediction.homeTeam.possessionAvg != null) && (
+            <div className="grid grid-cols-5 gap-2 text-center text-xs">
+              {prediction.homeTeam.completionRate != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Completion</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.completionRate.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.completionRate?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+              {prediction.homeTeam.tackleEfficiency != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Tackle Eff.</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.tackleEfficiency.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.tackleEfficiency?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+              {prediction.homeTeam.errorCount != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Errors</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.errorCount}</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.errorCount ?? '-'}</p>
+                </div>
+              )}
+              {prediction.homeTeam.penaltyCount != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Penalties</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.penaltyCount}</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.penaltyCount ?? '-'}</p>
+                </div>
+              )}
+              {prediction.homeTeam.possessionAvg != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Possession</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.possessionAvg.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.possessionAvg?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Injury summary */}
+          {(prediction.homeTeam.injuries?.length > 0 || prediction.awayTeam.injuries?.length > 0) && (
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-zinc-800 p-2">
+                <p className="text-zinc-500 mb-1">{prediction.homeTeam.name} Injuries</p>
+                {prediction.homeTeam.injuries?.length > 0 ? (
+                  prediction.homeTeam.injuries.map((inj: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between py-0.5">
+                      <span className="text-zinc-300">{inj.playerName}</span>
+                      <span className={cn(
+                        'text-[10px] uppercase font-medium',
+                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
+                      )}>
+                        {inj.status === 'probable' ? '✓ returning' : inj.status}
+                        {inj.position ? ` · ${inj.position}` : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-zinc-600">No injuries</p>
+                )}
+              </div>
+              <div className="rounded-lg bg-zinc-800 p-2">
+                <p className="text-zinc-500 mb-1">{prediction.awayTeam.name} Injuries</p>
+                {prediction.awayTeam.injuries?.length > 0 ? (
+                  prediction.awayTeam.injuries.map((inj: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between py-0.5">
+                      <span className="text-zinc-300">{inj.playerName}</span>
+                      <span className={cn(
+                        'text-[10px] uppercase font-medium',
+                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
+                      )}>
+                        {inj.status === 'probable' ? '✓ returning' : inj.status}
+                        {inj.position ? ` · ${inj.position}` : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-zinc-600">No injuries</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Factors */}
           <div className="space-y-3">
             <p className="text-xs font-medium text-zinc-400">Contributing Factors</p>

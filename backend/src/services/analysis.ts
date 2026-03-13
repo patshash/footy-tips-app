@@ -1,5 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 
+export interface InjuryInfo {
+  playerName: string;
+  position: string | null;
+  severity: string | null;
+  status: string;
+  injuryType: string | null;
+}
+
 export interface TeamProfile {
   id: string;
   name: string;
@@ -16,7 +24,43 @@ export interface TeamProfile {
   titleOdds: number | null;
   streak2026: string | null;
   recentForm: string;
+  injuries: InjuryInfo[];
+  completionRate: number | null;
+  tackleEfficiency: number | null;
+  errorCount: number | null;
+  penaltyCount: number | null;
+  possessionAvg: number | null;
 }
+
+// Position criticality for injury impact scoring
+const POSITION_CRITICALITY: Record<string, number> = {
+  'halfback': 1.0,
+  'five-eighth': 1.0,
+  'fullback': 1.0,
+  'hooker': 1.0,
+  'lock': 0.7,
+  'centre': 0.7,
+  'prop': 0.7,
+  'second row': 0.4,
+  'second-row': 0.4,
+  'winger': 0.4,
+  'wing': 0.4,
+  'bench': 0.2,
+  'reserve': 0.2,
+};
+
+const SEVERITY_WEIGHT: Record<string, number> = {
+  'season-ending': 1.0,
+  'major': 0.8,
+  'moderate': 0.5,
+  'minor': 0.2,
+};
+
+const STATUS_MODIFIER: Record<string, number> = {
+  'out': 1.0,
+  'doubtful': 0.5,
+  'probable': 0.0, // probable players are returning — handled separately as a boost
+};
 
 export interface PredictionFactor {
   name: string;
@@ -68,6 +112,50 @@ function confidenceLabel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH'
   return 'LOW';
 }
 
+function getPositionCriticality(position: string | null): number {
+  if (!position) return 0.4; // unknown position — assume moderate impact
+  return POSITION_CRITICALITY[position.toLowerCase().trim()] ?? 0.4;
+}
+
+function getSeverityWeight(severity: string | null): number {
+  if (!severity) return 0.4; // unknown severity — assume moderate
+  return SEVERITY_WEIGHT[severity.toLowerCase().trim()] ?? 0.4;
+}
+
+function getStatusModifier(status: string): number {
+  return STATUS_MODIFIER[status.toLowerCase().trim()] ?? 1.0;
+}
+
+/**
+ * Calculate the total injury burden for a team.
+ * Higher score = more impacted by injuries (worse off).
+ */
+function calculateInjuryBurden(injuries: InjuryInfo[]): number {
+  let burden = 0;
+  for (const inj of injuries) {
+    if (inj.status === 'probable') continue; // returning players don't add burden
+    const severity = getSeverityWeight(inj.severity);
+    const criticality = getPositionCriticality(inj.position);
+    const statusMod = getStatusModifier(inj.status);
+    burden += severity * criticality * statusMod;
+  }
+  return burden;
+}
+
+/**
+ * Calculate a positive boost from players returning from injury (status: probable).
+ * Returns a score representing the team's gain from returning players.
+ */
+function calculateReturnBoost(injuries: InjuryInfo[]): number {
+  let boost = 0;
+  for (const inj of injuries) {
+    if (inj.status !== 'probable') continue;
+    const criticality = getPositionCriticality(inj.position);
+    boost += criticality * 0.5;
+  }
+  return boost;
+}
+
 async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<TeamProfile> {
   const team = await prisma.team.findUniqueOrThrow({ where: { id: teamId } });
 
@@ -114,6 +202,28 @@ async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<T
     return 'L';
   }).join('');
 
+  // Active injuries
+  const activeInjuries = await prisma.injury.findMany({
+    where: {
+      teamId,
+      status: { in: ['out', 'doubtful', 'probable'] },
+    },
+  });
+
+  const injuries: InjuryInfo[] = activeInjuries.map((inj: { playerName: string; position: string | null; severity: string | null; status: string; injuryType: string | null }) => ({
+    playerName: inj.playerName,
+    position: inj.position,
+    severity: inj.severity,
+    status: inj.status,
+    injuryType: inj.injuryType,
+  }));
+
+  // Latest team stats (try 2025 first, then any season)
+  const teamStat = await prisma.teamStat.findFirst({
+    where: { teamId },
+    orderBy: [{ season: 'desc' }, { roundId: 'desc' }],
+  });
+
   return {
     id: teamId,
     name: team.shortName,
@@ -130,6 +240,12 @@ async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<T
     titleOdds: parseTitleOdds(ladder2026?.titleOdds ?? null),
     streak2026: ladder2026?.streak ?? null,
     recentForm: formStr,
+    injuries,
+    completionRate: teamStat?.completionRate ?? null,
+    tackleEfficiency: teamStat?.tackleEfficiency ?? null,
+    errorCount: teamStat?.errorCount ?? null,
+    penaltyCount: teamStat?.penaltyCount ?? null,
+    possessionAvg: teamStat?.possessionAvg ?? null,
   };
 }
 
@@ -275,6 +391,105 @@ export async function predictMatch(
       weight: Math.abs(momentumDiff),
       detail: `${home.name}: ${home.streak2026 ?? 'BYE'}, ${away.name}: ${away.streak2026 ?? 'BYE'}`,
     });
+  }
+
+  // Factor 8: Injury Impact (weight: 10 max)
+  const homeBurden = calculateInjuryBurden(home.injuries);
+  const awayBurden = calculateInjuryBurden(away.injuries);
+  const homeReturnBoost = calculateReturnBoost(home.injuries);
+  const awayReturnBoost = calculateReturnBoost(away.injuries);
+
+  // Net injury advantage: opponent's burden helps you, your returns help you
+  const homeInjuryNet = (awayBurden - homeBurden) + (homeReturnBoost - awayReturnBoost);
+  const awayInjuryNet = -homeInjuryNet;
+
+  const injuryWeight = Math.min(Math.abs(homeInjuryNet) * 3, 10);
+
+  if (injuryWeight > 0.1) {
+    if (homeInjuryNet > 0) homeScore += injuryWeight; else awayScore += injuryWeight;
+
+    const homeOut = home.injuries.filter(i => i.status === 'out');
+    const awayOut = away.injuries.filter(i => i.status === 'out');
+    const homeDoubtful = home.injuries.filter(i => i.status === 'doubtful');
+    const awayDoubtful = away.injuries.filter(i => i.status === 'doubtful');
+    const homeReturning = home.injuries.filter(i => i.status === 'probable');
+    const awayReturning = away.injuries.filter(i => i.status === 'probable');
+
+    const detailParts: string[] = [];
+    detailParts.push(`${home.name}: ${homeOut.length} out, ${homeDoubtful.length} doubtful, ${homeReturning.length} returning`);
+    detailParts.push(`${away.name}: ${awayOut.length} out, ${awayDoubtful.length} doubtful, ${awayReturning.length} returning`);
+
+    // List key absences (critical positions)
+    const keyAbsences = [...home.injuries, ...away.injuries]
+      .filter(i => i.status !== 'probable' && getPositionCriticality(i.position) >= 0.7)
+      .map(i => `${i.playerName} (${i.position ?? 'unknown'})`)
+      .slice(0, 4);
+    if (keyAbsences.length > 0) {
+      detailParts.push(`Key absences: ${keyAbsences.join(', ')}`);
+    }
+
+    factors.push({
+      name: 'Injury Impact',
+      favouring: homeInjuryNet > 0 ? home.name : awayInjuryNet > 0 ? away.name : 'Even',
+      weight: injuryWeight,
+      detail: detailParts.join('. '),
+    });
+  }
+
+  // Factor 9: Playing Statistics (weight: 10 max)
+  // Uses completion rate, tackle efficiency, errors, penalties, possession when available
+  const hasHomeStats = home.completionRate != null || home.tackleEfficiency != null || home.errorCount != null || home.penaltyCount != null || home.possessionAvg != null;
+  const hasAwayStats = away.completionRate != null || away.tackleEfficiency != null || away.errorCount != null || away.penaltyCount != null || away.possessionAvg != null;
+
+  if (hasHomeStats && hasAwayStats) {
+    let statsAdvantage = 0;
+    const statDetails: string[] = [];
+
+    // Completion rate (higher is better) — strong indicator of ball control
+    if (home.completionRate != null && away.completionRate != null) {
+      const compDiff = home.completionRate - away.completionRate;
+      statsAdvantage += compDiff * 0.3; // scaled: 5% difference ≈ 1.5pts
+      statDetails.push(`Completion: ${home.name} ${home.completionRate.toFixed(1)}% vs ${away.name} ${away.completionRate.toFixed(1)}%`);
+    }
+
+    // Tackle efficiency (higher is better)
+    if (home.tackleEfficiency != null && away.tackleEfficiency != null) {
+      const tackleDiff = home.tackleEfficiency - away.tackleEfficiency;
+      statsAdvantage += tackleDiff * 0.2;
+      statDetails.push(`Tackles: ${home.name} ${home.tackleEfficiency.toFixed(1)}% vs ${away.name} ${away.tackleEfficiency.toFixed(1)}%`);
+    }
+
+    // Errors (lower is better — inverted)
+    if (home.errorCount != null && away.errorCount != null) {
+      const errorDiff = away.errorCount - home.errorCount; // opponent errors help you
+      statsAdvantage += errorDiff * 0.15;
+      statDetails.push(`Errors: ${home.name} ${home.errorCount} vs ${away.name} ${away.errorCount}`);
+    }
+
+    // Penalties conceded (lower is better — inverted)
+    if (home.penaltyCount != null && away.penaltyCount != null) {
+      const penDiff = away.penaltyCount - home.penaltyCount; // opponent penalties help you
+      statsAdvantage += penDiff * 0.15;
+      statDetails.push(`Penalties: ${home.name} ${home.penaltyCount} vs ${away.name} ${away.penaltyCount}`);
+    }
+
+    // Possession (higher is better)
+    if (home.possessionAvg != null && away.possessionAvg != null) {
+      const possDiff = home.possessionAvg - away.possessionAvg;
+      statsAdvantage += possDiff * 0.2;
+      statDetails.push(`Possession: ${home.name} ${home.possessionAvg.toFixed(1)}% vs ${away.name} ${away.possessionAvg.toFixed(1)}%`);
+    }
+
+    const statsWeight = Math.min(Math.abs(statsAdvantage), 10);
+    if (statsWeight > 0.1) {
+      if (statsAdvantage > 0) homeScore += statsWeight; else awayScore += statsWeight;
+      factors.push({
+        name: 'Playing Statistics',
+        favouring: statsAdvantage > 0 ? home.name : statsAdvantage < 0 ? away.name : 'Even',
+        weight: statsWeight,
+        detail: statDetails.join('. '),
+      });
+    }
   }
 
   // Baseline home advantage

@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { fetchDraw, fetchLadder, fetchSeasonDraw, ScrapeResult } from './nrl-api.js';
+import { fetchDraw, fetchLadder, fetchSeasonDraw, fetchTeamStats, computeTeamStats, ScrapeResult } from './nrl-api.js';
 import { fetchRoundDetails, fetchSeasonRoundDetails } from './rlp-scraper.js';
 
 export type { ScrapeResult };
@@ -10,15 +10,35 @@ export type { ScrapeResult };
 export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 2026): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
 
-  // Find current round
-  const currentRound = await prisma.round.findFirst({
-    where: { seasonId: String(season), isCurrent: true },
-    orderBy: { number: 'desc' },
-  });
-  const roundNum = currentRound?.number ?? 1;
+  // Auto-detect current round from the NRL API (default draw endpoint returns current round)
+  let roundNum = 1;
+  try {
+    const url = `https://www.nrl.com/draw/data?competition=111&season=${season}`;
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (resp.ok) {
+      const data = await resp.json() as any;
+      if (typeof data.selectedRoundId === 'number') {
+        roundNum = data.selectedRoundId;
+      }
+    }
+  } catch {
+    // Fall back to DB if API call fails
+    const currentRound = await prisma.round.findFirst({
+      where: { seasonId: String(season), isCurrent: true },
+      orderBy: { number: 'desc' },
+    });
+    roundNum = currentRound?.number ?? 1;
+  }
 
-  // Fetch fixtures for current round
+  // Fetch fixtures for current round (also updates isCurrent flag)
   results.push(await fetchDraw(prisma, season, roundNum));
+
+  // Also scrape the previous round to pick up completed results
+  if (roundNum > 1) {
+    results.push(await fetchDraw(prisma, season, roundNum - 1));
+  }
 
   // Fetch ladder
   results.push(await fetchLadder(prisma, season));
@@ -37,28 +57,40 @@ export async function scrapeLadder(prisma: PrismaClient, season: string = '2026'
  * Alias for backwards compatibility with scrape routes
  */
 export async function scrapeFixtures(prisma: PrismaClient, season: string = '2026', round?: number): Promise<ScrapeResult> {
-  const currentRound = await prisma.round.findFirst({
-    where: { seasonId: season, isCurrent: true },
-    orderBy: { number: 'desc' },
-  });
-  return fetchDraw(prisma, parseInt(season), round ?? currentRound?.number ?? 1);
+  if (round) {
+    return fetchDraw(prisma, parseInt(season), round);
+  }
+  // Auto-detect current round
+  const results = await scrapeCurrentRound(prisma, parseInt(season));
+  // Return just the first draw result (current round fixtures)
+  return results[0] ?? { source: 'nrl.com/api', type: 'draw', recordsAffected: 0, errors: ['No results'], details: '' };
 }
 
 /**
- * Scrape all data for current season: current round fixtures + ladder.
+ * Scrape all data for current season: current round fixtures + ladder + team stats.
  */
 export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult[]> {
-  return scrapeCurrentRound(prisma, parseInt(season));
+  const results = await scrapeCurrentRound(prisma, parseInt(season));
+  results.push(await scrapeTeamStats(prisma, season));
+  return results;
 }
 
 /**
- * Bulk historical import: all fixtures + ladder for 2024-2026.
+ * Scrape team-level statistics from NRL.com stats API.
+ * Falls back to computing stats from completed fixture data if API unavailable.
+ */
+export async function scrapeTeamStats(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
+  return fetchTeamStats(prisma, parseInt(season));
+}
+
+/**
+ * Bulk historical import: all fixtures + ladder for a given year range.
  * Fetches all rounds from NRL.com API, then enriches with RLP data.
  */
 export async function scrapeHistorical(
   prisma: PrismaClient,
-  startYear: number = 2024,
-  endYear: number = 2026,
+  startYear: number = 2025,
+  endYear: number = 2025,
   onProgress?: (msg: string) => void
 ): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
@@ -89,6 +121,11 @@ export async function scrapeHistorical(
         results.push(...rlpResults);
       }
     }
+
+    // Compute team stats from fixture data for this season
+    onProgress?.(`Computing ${year} team statistics from fixtures...`);
+    const statsResult = await computeTeamStats(prisma, year);
+    results.push(statsResult);
   }
 
   return results;
