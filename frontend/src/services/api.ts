@@ -82,4 +82,12 @@ export const api = {
 
   // Health
   getHealth: () => fetchJson<any>('/health'),
+
+  // iTipFooty
+  getITipFootyStatus: () => fetchJson<any>('/itipfooty/status'),
+  submitITipFootyTips: (round?: number) =>
+    fetchJson<any>('/itipfooty/submit', {
+      method: 'POST',
+      body: JSON.stringify(round != null ? { round } : {}),
+    }),
 };

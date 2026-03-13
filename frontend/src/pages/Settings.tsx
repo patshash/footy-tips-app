@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2, Send } from 'lucide-react';
 import { api } from '../services/api';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -42,6 +42,18 @@ export default function Settings() {
   const { data: scrapeLogs = [] } = useQuery({
     queryKey: ['scrapeLogs'],
     queryFn: () => api.getScrapeLogs(10),
+  });
+
+  const { data: itipStatus } = useQuery({
+    queryKey: ['itipfootyStatus'],
+    queryFn: () => api.getITipFootyStatus(),
+  });
+
+  const submitTips = useMutation({
+    mutationFn: (round?: number) => api.submitITipFootyTips(round),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scrapeLogs'] });
+    },
   });
 
   const togglePlugin = useMutation({
@@ -202,6 +214,89 @@ export default function Settings() {
           </div>
         </Card>
       )}
+
+      {/* iTipFooty Integration */}
+      <Card title="iTipFooty Integration" subtitle="Auto-submit prediction picks to iTipFooty.com.au">
+        <div className="space-y-4">
+          {itipStatus?.configured ? (
+            <>
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle size={14} className="text-emerald-500" />
+                <span className="text-zinc-300">
+                  Connected as <span className="font-medium text-white">{itipStatus.username}</span>
+                  {' '}· Comp #{itipStatus.compId}
+                </span>
+              </div>
+
+              <button
+                onClick={() => submitTips.mutate(undefined)}
+                disabled={submitTips.isPending}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-all',
+                  submitTips.isPending
+                    ? 'cursor-not-allowed bg-zinc-700'
+                    : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700'
+                )}
+              >
+                {submitTips.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+                {submitTips.isPending ? 'Submitting...' : 'Submit Tips for Current Round'}
+              </button>
+
+              {submitTips.isSuccess && (
+                <div className={cn(
+                  'rounded-lg border p-3 text-sm',
+                  submitTips.data.success
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    : 'border-red-500/30 bg-red-500/10 text-red-300'
+                )}>
+                  <p className="font-medium">
+                    {submitTips.data.success ? '✓' : '✗'} {submitTips.data.message}
+                  </p>
+                  {submitTips.data.tips?.length > 0 && (
+                    <div className="mt-2 space-y-1 text-xs opacity-80">
+                      {submitTips.data.tips.map((tip: any, i: number) => (
+                        <p key={i}>
+                          Game {tip.gameNumber}: {tip.homeTeam} vs {tip.awayTeam}
+                          {' → '}<span className="font-bold text-white">{tip.pickedTeam}</span>
+                          {' '}({tip.confidence})
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {submitTips.data.errors?.length > 0 && (
+                    <div className="mt-2 text-xs opacity-70">
+                      {submitTips.data.errors.map((err: string, i: number) => (
+                        <p key={i} className="text-yellow-300">⚠ {err}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {submitTips.isError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                  <p className="font-medium">✗ Submission failed</p>
+                  <p className="mt-1 text-xs opacity-80">{(submitTips.error as Error).message}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-zinc-500">
+              <AlertCircle size={14} />
+              <span>
+                Not configured. Set <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_USERNAME</code>,{' '}
+                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_PASSWORD</code>, and{' '}
+                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_COMP_ID</code> in{' '}
+                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">backend/.env</code>
+              </span>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Plugins */}
       <Card title="Plugins" subtitle="Manage data source plugins">

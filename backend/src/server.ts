@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -12,6 +13,7 @@ import { pluginRoutes } from './routes/plugins.js';
 import { injuryRoutes } from './routes/injuries.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { predictionsRoutes } from './routes/predictions.js';
+import { itipfootyRoutes } from './routes/itipfooty.js';
 
 export { prisma };
 
@@ -34,6 +36,7 @@ app.use('/api/plugins', pluginRoutes);
 app.use('/api/injuries', injuryRoutes);
 app.use('/api/scrape', scrapeRoutes);
 app.use('/api/predictions', predictionsRoutes);
+app.use('/api/itipfooty', itipfootyRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
