@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Trash2, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Trash2, Save, AlertCircle, ShieldAlert } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '../services/api';
 import Card from '../components/Card';
@@ -38,6 +38,18 @@ export default function MatchDetail() {
   });
 
   const existingPick = picks[0];
+
+  const { data: homeInjuries = [] } = useQuery({
+    queryKey: ['injuries', 'home', fixture?.homeTeamId],
+    queryFn: () => api.getInjuries({ teamId: fixture!.homeTeamId }),
+    enabled: !!fixture?.homeTeamId,
+  });
+
+  const { data: awayInjuries = [] } = useQuery({
+    queryKey: ['injuries', 'away', fixture?.awayTeamId],
+    queryFn: () => api.getInjuries({ teamId: fixture!.awayTeamId }),
+    enabled: !!fixture?.awayTeamId,
+  });
 
   const [confidence, setConfidence] = useState<'low' | 'medium' | 'high'>(
     existingPick?.confidence || 'medium'
@@ -177,9 +189,23 @@ export default function MatchDetail() {
                 <span className="text-zinc-400">Ladder Position</span>
                 <span>{fixture.homeLadderPos || '—'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Injuries</span>
-                <span>{fixture.homeInjuries ?? '—'}</span>
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 flex items-center gap-1"><ShieldAlert size={12} /> Injuries</span>
+                  <span className="text-zinc-500 text-xs">{homeInjuries.length > 0 ? `${homeInjuries.length} listed` : 'None'}</span>
+                </div>
+                {homeInjuries.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {homeInjuries.map((inj: any) => (
+                      <div key={inj.id} className="flex items-center justify-between rounded bg-zinc-800 px-2 py-1 text-xs">
+                        <span className="text-zinc-300">{inj.playerName}{inj.position ? ` (${inj.position})` : ''}</span>
+                        <Badge variant={inj.status === 'out' ? 'danger' : inj.status === 'doubtful' ? 'warning' : 'success'}>
+                          {inj.status === 'probable' ? 'returning' : inj.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -193,9 +219,23 @@ export default function MatchDetail() {
                 <span className="text-zinc-400">Ladder Position</span>
                 <span>{fixture.awayLadderPos || '—'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Injuries</span>
-                <span>{fixture.awayInjuries ?? '—'}</span>
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 flex items-center gap-1"><ShieldAlert size={12} /> Injuries</span>
+                  <span className="text-zinc-500 text-xs">{awayInjuries.length > 0 ? `${awayInjuries.length} listed` : 'None'}</span>
+                </div>
+                {awayInjuries.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {awayInjuries.map((inj: any) => (
+                      <div key={inj.id} className="flex items-center justify-between rounded bg-zinc-800 px-2 py-1 text-xs">
+                        <span className="text-zinc-300">{inj.playerName}{inj.position ? ` (${inj.position})` : ''}</span>
+                        <Badge variant={inj.status === 'out' ? 'danger' : inj.status === 'doubtful' ? 'warning' : 'success'}>
+                          {inj.status === 'probable' ? 'returning' : inj.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </Card>
